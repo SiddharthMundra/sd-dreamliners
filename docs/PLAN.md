@@ -34,11 +34,12 @@ The novel core loop: **camera sees the world → AI reasons about it → body fe
 ## Locked-In Premises
 
 1. **Drop DoorDash-style AI assistant.** Voice agent is in scope but scoped to belt-relevant intents: navigation queries, fall-response, status. Not a general chatbot.
-2. **Webapp = demo/debug console, not product UI.** Live camera feed, YOLO boxes, IMU trace, current haptic pattern. No auth, no routing, no polish beyond readable.
+2. **Webapp = product UI (primary companion surface).** Same live signals—camera, YOLO overlay, IMU trace, haptic state, voice transcript—but shipped as a deliberate product experience: clear hierarchy, calm typography, responsive layout, accessible states (including fall/emergency). Accounts and multi-page routing are out of scope for the hackathon; everything else should read as intentional product design, not a thrown-together debug page.
 3. **USB-CDC for ESP↔Pi.** Serial with a framed JSON protocol. No WiFi/BT for this link.
 4. **PTT > wake-word.** Button A on M5 toggles listening. Reliable in noisy venues.
 5. **Primary YOLO runs on Pi CPU** (YOLOv8n, 320×320, ~5 FPS). Laptop is the fallback if Pi is too slow.
 6. **Distance ToF is first-class input**, not a nice-to-have. It catches obstacles YOLO misses and runs at 50Hz.
+7. **Local-first reasoning on the Rubik Pi.** A small local LLM (default: Ollama + `llama3.2:3b` or smaller/quantized if needed) plus local STT (e.g. Whisper-tiny / faster-whisper) is the **preferred** path for **most decisions**: turning voice into **intent** (`SEEKING`, targets, “what do you see” answers), tightening natural-language responses, and emitting **structured hints** the fusion engine can consume. **YOLO stays on-device** as the vision oracle; the LLM reasons over **detection summaries + distance + user text**, not raw pixels, to save RAM and latency. **If the Phase 1 A4 voice-turn gate fails, ship `KEYWORD_INTENT_ONLY` for intent** (still on-device; assumption A4)—do not burn the clock on quant tuning. **OpenAI Realtime** (or other cloud APIs) is an **optional** path for demos or if local latency/quality misses the bar—never the only way the belt works.
 
 ## Cross-Model Perspective
 
@@ -52,17 +53,17 @@ Skipped — 2-day clock, user wants execution over deliberation.
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         Rubik Pi 5 (Python 3.11)                      │
 │                                                                        │
-│  ┌─────────────┐   ┌─────────────┐   ┌──────────────┐   ┌─────────┐ │
-│  │  Camera     │   │  YOLO       │   │  Voice       │   │ Webapp  │ │
-│  │  Service    │──▶│  Inference  │   │  Agent       │   │ Server  │ │
-│  │ (picamera2) │   │ (YOLOv8n)   │   │ (OpenAI RT)  │   │(FastAPI)│ │
-│  └─────────────┘   └──────┬──────┘   └──────┬───────┘   └────▲────┘ │
-│                           │                  │                 │      │
-│                           ▼                  ▼                 │      │
+│  ┌─────────────┐   ┌─────────────┐   ┌────────────────────┐   ┌─────────┐ │
+│  │  Camera     │   │  YOLO       │   │  Voice stack       │   │ Webapp  │ │
+│  │  Service    │──▶│  Inference  │   │  Whisper+Ollama    │   │ Server  │ │
+│  │ (picamera2) │   │ (YOLOv8n)   │   │  +TTS [cloud opt]  │   │(FastAPI)│ │
+│  └─────────────┘   └──────┬──────┘   └─────────┬──────────┘   └────▲────┘ │
+│                           │                    │                  │      │
+│                           ▼                    ▼                  │      │
 │                   ┌───────────────────────────────┐            │      │
 │                   │   Navigation Fusion Engine    │────────────┘      │
-│                   │ (YOLO + Distance + intent →   │   WebSocket       │
-│                   │  haptic command)              │                   │
+│                   │ (YOLO + Distance + LLM intent │   WebSocket       │
+│                   │  → haptic command)            │                   │
 │                   └──────────────┬────────────────┘                   │
 │                                  │                                    │
 │                                  ▼                                    │
@@ -96,8 +97,18 @@ Skipped — 2-day clock, user wants execution over deliberation.
 | A1 | RPi Camera ribbon fits Rubik Pi 5 CSI | Vision dead | Laptop + USB webcam fallback |
 | A2 | Modulino Vibro speaks I2C on Qwiic bus, configurable addresses | Haptics dead | Direct ERM motor drive via GPIO + MOSFET |
 | A3 | Power brick delivers 5V/3A sustained via USB-PD | Random brownouts | Split: one brick for Pi, USB from laptop for M5 |
-| A4 | OpenAI Realtime API accessible from venue WiFi | Voice broken | Local Whisper-tiny + Llama 3.2 3B via Ollama |
+| A4 | Local STT + Ollama LLM + local TTS run on Rubik with usable latency (targets: typical voice turn under ~3s, fusion hints under ~500ms after transcript) | Voice/intent laggy, OOM, or **thermal throttle mid-demo** | **Phase 1 binary gate (pre-decided):** On the real Rubik, benchmark **end-to-end local voice turn** (PTT up → first TTS audio) with a **demo-realistic load** (YOLO + WebSocket + serial bridge at least idle-connected). If round-trip **cannot hit the ~3s target**, **drop local LLM for intent** and ship **`KEYWORD_INTENT_ONLY`**: phrase/keyword routing into fusion (`find X`, `what do you see`, etc.) + canned or template replies—no quant tuning spiral during the hackathon. Only if keywords are insufficient: smaller quant, Piper-class TTS, shorter prompts; **optional** OpenAI Realtime. |
 | A5 | YOLOv8n on Pi CPU reaches ≥3 FPS at 320×320 | Navigation laggy | Laptop runs YOLO, streams detections via WS |
+
+### What I'd flag
+
+- **A4 is the biggest risk, and easy to underestimate.** `llama3.2:3b` on a Rubik Pi while also running **STT + inference + TTS + YOLO + FastAPI + serial bridge** is a heavy concurrent stack. Expect **RAM pressure** and **thermal throttling** during a live demo, not just “slow tokens.” The table above makes the mitigation **explicit**: failing the Phase 1 voice turn benchmark means **`KEYWORD_INTENT_ONLY`**, not vague “try a smaller quant” while the clock runs out.
+
+- **Camera status vs the written plan.** Phase 1 still says “camera works,” but **in practice this has already burned hours** and may still **not** be confirmed **end-to-end** (e.g. stable stream into the path YOLO/web will use). That is the **actual Day 0 blocker**—more urgent than iterating this document.
+
+#### The real question (next ~30 minutes at the hackathon)
+
+**Is the camera working yet from the stream test?** Until the answer is clearly **yes** (reliable frames or live stream on the Rubik into the agreed capture path), treat vision-dependent work as speculative. **That** is the only thing that matters in the first half hour—not debate on LLM quants.
 
 ---
 
@@ -163,7 +174,7 @@ Server broadcasts at ~10Hz. Types:
 Inputs every tick (target 10Hz):
 - YOLO boxes with class + normalized xywh (latest frame)
 - Distance ToF reading (mm)
-- Voice intent state (IDLE | SEEKING(target_class) | EMERGENCY)
+- Voice intent state (IDLE | SEEKING(target_class) | EMERGENCY) — **from the local LLM** (transcript + compact detection/distance JSON, not raw images) **when A4 passes the Phase 1 voice-turn gate**; otherwise **`KEYWORD_INTENT_ONLY`** (phrase/keyword → fusion + canned replies; see assumption A4)
 - IMU fall flag
 
 Priority (highest first):
@@ -187,7 +198,7 @@ Each phase is ~4–6h. Buffer for sleep, meals, and chaos is built in.
 
 **Exit criteria (all 4 must be true):**
 - M5 boots, reads its IMU, and prints `{"t":"hello",...}` over USB.
-- Pi boots, Python env ready, camera returns one JPEG to disk.
+- Pi boots, Python env ready, **camera verified on the Rubik**: **live stream or stable frame path** (CSI **or** documented fallback such as USB webcam) into the pipeline the webapp/YOLO will use—not merely “one JPEG to disk” from a one-off script if that path is not what the product uses.
 - Modulino bus I2C-scans clean; Vibro 0x5A buzzes on demand.
 - Belt housing v1 printed; motor mount brackets fit Modulino boards.
 
@@ -198,8 +209,8 @@ Each phase is ~4–6h. Buffer for sleep, meals, and chaos is built in.
 **Exit criteria:**
 - M5 streams IMU at 50Hz, detects simulated fall, handles `haptic` commands, streams mic audio frames.
 - Haptic library: `buzz(dir, intensity, pattern, duration)` works for all 4 Vibros.
-- Pi: YOLO runs on sample JPEGs, produces bounding boxes ≥3 FPS. Voice round-trip (PTT → text → LLM → TTS audio) works with keyboard-simulated PTT.
-- Webapp: FastAPI server runs, WS accepts fake messages, renders camera feed + detections + haptic indicator + IMU trace.
+- Pi: YOLO runs on sample JPEGs, produces bounding boxes ≥3 FPS. Voice path: **either** **local** round-trip (PTT → STT → Ollama → TTS) **if A4 Phase 1 gate passed**, **or** `KEYWORD_INTENT_ONLY` + STT/TTS (no LLM intent) **if the gate failed**—keyboard-simulated PTT in both cases.
+- Webapp: FastAPI server runs, WS accepts fake messages; **product-quality** screen layout renders camera feed, detections overlay, haptic indicator, and IMU trace with consistent spacing, labels, and status semantics.
 - CAD v2: final belt, motor placements ergonomic, Pi pouch fits with power brick.
 
 ### Phase 3 — Integration (Day 2, 0–6h)
@@ -208,22 +219,22 @@ Each phase is ~4–6h. Buffer for sleep, meals, and chaos is built in.
 
 **Exit criteria:**
 - Pi ↔ M5 serial link stable for 10 minutes, no dropped frames.
-- PTT button on M5 → mic audio frames → Pi → OpenAI Realtime → TTS → Pi speaker (or M5 speaker).
+- PTT button on M5 → mic audio frames → Pi → **local** STT → **local** LLM → TTS → Pi speaker (or M5 speaker); cloud voice path may exist but is not required for this gate.
 - YOLO on live camera → navigation fusion → haptic command → real motor buzzes.
 - Distance ToF reading flows M5 → Pi → fusion → haptic override when < 800mm.
 - Fall detection on M5 → Pi alert → webapp banner + voice prompt.
-- Webapp shows live everything.
+- Webapp shows all product surfaces live (vision, nav, haptics, voice, health).
 
 ### Phase 4 — Polish & Hardening (Day 2, 6–10h)
 
-**Goal:** Make it reliable. Not pretty, reliable.
+**Goal:** Make it reliable **and** product-presentable: no regressions under wear, UI stays trustworthy under load.
 
 **Tasks:**
 - 30-minute burn-in: belt on a person walking around, no crashes, no serial resets, no disconnects.
 - Calibrate: fall threshold (no false positives from bending down), distance threshold (800mm may need tuning), motor intensities (top value shouldn't hurt).
 - Voice agent: tighten system prompt to belt-context-only. Add two test intents: "what do you see" and "find the [object]".
-- Webapp: one-click "start demo" button that brings all services up.
-- Fallback flips ready: laptop+webcam swap-in script, local-LLM flip, and direct-motor-drive firmware branch.
+- Webapp: one-click **launch** control (primary CTA) that brings all services up and surfaces connection/hardware status clearly.
+- Fallback flips ready: laptop+webcam swap-in script, **cloud voice** flip (if local LLM/STT fails), and direct-motor-drive firmware branch.
 
 ---
 
@@ -288,34 +299,34 @@ Each phase is ~4–6h. Buffer for sleep, meals, and chaos is built in.
 
 ### Sid — AI/Software (Pi Orchestrator, Vision, Voice, Webapp)
 
-**Tooling:** Python 3.11, uv/poetry, FastAPI, picamera2, ultralytics YOLO, openai sdk, pyserial.
+**Tooling:** Python 3.11, uv/poetry, FastAPI, picamera2, ultralytics YOLO, pyserial, **Ollama** (local LLM), local STT (e.g. faster-whisper / whisper.cpp), local TTS (e.g. Piper); `openai` SDK optional for cloud path only.
 
 **Phase 1:**
-- Rubik Pi 5 env setup: Python 3.11, `uv venv`, install ultralytics, fastapi, uvicorn, pyserial, picamera2, openai.
-- **Day-0 critical: verify RPi Camera works on Rubik Pi 5.** If not, immediate switch to USB webcam on Pi (or move camera to laptop with network bridge). This blocks everything else vision.
+- Rubik Pi 5 env setup: Python 3.11, `uv venv`, install ultralytics, fastapi, uvicorn, pyserial, picamera2, faster-whisper (or agreed STT), TTS deps; **install Ollama + default chat model**; `openai` optional.
+- **Day-0 critical (current blocker in practice):** **Stream test on the Rubik**—confirm CSI + `picamera2` (or fallback) delivers **reliable frames** into the real capture path. If this is still failing after prior debugging, **execute fallback immediately** (USB webcam on Pi or laptop bridge)—do not burn Phase 1 assuming “we’ll fix camera later.”
 - YOLO hello world: run YOLOv8n on a saved JPEG, print detections.
-- FastAPI skeleton: `/` serves static dashboard, `/ws` echoes.
+- FastAPI skeleton: `/` serves the product UI shell (layout + empty states), `/ws` echoes.
 
 **Phase 2:**
 - `services/camera.py` — picamera2 at 320×320, 10 FPS ring buffer.
 - `services/yolo.py` — inference loop, publishes detections on an asyncio queue. Benchmark FPS. If < 3 FPS on Pi, flip to laptop offload plan.
-- `services/voice.py` — OpenAI Realtime API client. Accepts PCM16 audio frames, streams response audio back. Hold a system prompt restricting scope to belt context.
+- `services/voice.py` — **Local-first** pipeline: PCM16 frames → STT → **if A4 gate pass:** Ollama chat (belt-only prompt, structured intent JSON + user-facing reply); **if gate fail:** `KEYWORD_INTENT_ONLY` (no Ollama on hot path for intent). TTS plays locally. Optional thin **OpenAI Realtime** client behind a feature flag for venue demos—not the default dependency.
 - `services/serial_bridge.py` — pyserial, JSON-line reader/writer, asyncio-friendly. Heartbeat loop.
 - `services/fusion.py` — navigation fusion algorithm per interface contract §4. Outputs haptic commands.
-- `webapp/` — single HTML page with canvas for camera + overlay, div for IMU chart (use Chart.js from CDN), div for current haptic state. Ugly but readable.
+- `webapp/` — product UI: canvas (or video) for camera + overlay, chart region for IMU (Chart.js from CDN is fine), dedicated panels for haptic state, voice transcript, and system health. Match a single visual system (type scale, color tokens, spacing); empty/error/offline states are first-class, not afterthoughts.
 - `main.py` — asyncio event loop wires all services together.
 
 **Phase 3:**
 - Integration with Vaibhav on serial. Integration with Ayan on haptic commands round-trip.
-- Wire voice: PTT down → start mic forwarding to OpenAI → on PTT up → end turn → play TTS via `aplay` or M5 speaker (display message for demo).
-- Add voice intents: parse final assistant text for keywords `find X`, `what do you see`, `where am I` → inject into fusion state.
+- Wire voice: PTT down → buffer/stream to **local** STT → on PTT up → run **local** LLM with latest detection summary → TTS via `aplay`/Piper or M5 speaker; push assistant text + parsed intent to fusion.
+- Voice intents: prefer **LLM-emitted JSON** (e.g. `seeking: "chair"`) into fusion; keep a tiny keyword fallback only if the model returns malformed structured output.
 - Fall handler: on `fall` message, push emergency banner to webapp, buzz ALL SOS, have voice say "are you okay? say yes or no".
 
 **Phase 4:**
 - Start script: `bin/start-belt.sh` brings up all services, checks hardware, exits non-zero if anything fails.
 - Logging: structured JSON logs to `/var/log/belt/` with rotation.
-- Local LLM fallback: ollama + `llama3.2:3b` installed, flip-switch in voice.py.
-- Dashboard polish: make sure data actually flows visibly for 5 min straight.
+- Prestaged **Ollama** + default model (`llama3.2:3b` or agreed smaller quant) on the Rubik; benchmark tokens/s and RAM. Optional `OPENAI_VOICE=1` flip in `voice.py` for cloud-only demos.
+- UI polish pass: motion/jank check on live WS stream, fall/emergency banner reads instantly, 5-minute soak with no layout thrash or unreadable flashes.
 
 **Files Sid owns:** `pi/*`, `webapp/*`, `bin/start-belt.sh`, `docs/architecture.md`.
 
@@ -372,7 +383,8 @@ If any gate fails, STOP and rally the team. Do not stack integrations on a broke
 | Pi Camera doesn't fit Rubik Pi 5 CSI | Med | Vision dead | USB webcam on Pi (ordered backup) |
 | Modulino Vibro I2C behavior unknown | Med | Haptic dead | MOSFET direct-drive (Ayan prebuilds) |
 | YOLO too slow on Pi | Med | Laggy nav | Laptop offload via WiFi+WS |
-| OpenAI Realtime unreachable | Low-Med | No voice | Local Whisper+Ollama (Sid prestages) |
+| Local LLM too slow / OOM on Rubik | Med | Sluggish or broken intent + replies | Smaller quant, shorter ctx, detection-summary-only prompts; reduce concurrent services; cloud voice flag last resort |
+| OpenAI Realtime unreachable (if enabled) | Low | Cloud demo path only | Belt still works on local stack by default |
 | Power brownouts under load | Med | Random resets | Split power: laptop USB for M5, brick for Pi only |
 | Serial link flakes | Low | Data loss | Watchdog + auto-reconnect (Vaibhav builds it) |
 | Fall false positives | High | Nuisance | Tunable threshold + 500ms dwell confirmation |
@@ -387,8 +399,9 @@ Product works end-to-end when:
 1. Wearer walks forward, camera sees an obstacle, front motor buzzes, wearer turns away, motor stops.
 2. Wearer holds PTT, says "what do you see," voice replies with a sentence describing the current frame.
 3. Wearer falls (or simulates): belt buzzes SOS, webapp shows banner, voice asks if they're okay.
-4. Webapp is open on a laptop showing live camera, boxes, IMU, haptic state, voice transcript.
+4. Product webapp is open on a laptop (or tablet): live camera, boxes, IMU, haptic state, and voice transcript in a cohesive, glanceable layout.
 5. System runs 15 minutes continuously without intervention.
+6. **Local-first proof:** happy-path voice + intent works **without OpenAI** on **Rubik-only** STT + local TTS, plus **either** Ollama-driven intent (A4 Phase 1 gate **pass**) **or** `KEYWORD_INTENT_ONLY` (gate **fail**)—judges still experience the full loop.
 
 ## Distribution Plan
 
@@ -396,7 +409,7 @@ Not applicable — hackathon prototype. The "distribution" is handing the belt t
 
 ## Next Steps
 
-1. Lock in open assumptions (A1–A5) by close of Day 0.
+1. Lock in open assumptions (A1–A5) by close of Day 0. **Run the A4 Phase 1 voice-turn benchmark and record the outcome** (LLM intent vs `KEYWORD_INTENT_ONLY`). **Unblock camera stream test first**—see “What I'd flag.”
 2. Phase 1 kick-off — all four people work in parallel, no blocking dependencies until Phase 3.
 3. Run `/plan-eng-review` against this doc to catch anything the team missed.
 4. Commit this file to the repo at `docs/PLAN.md` so everyone sees the same source of truth.
