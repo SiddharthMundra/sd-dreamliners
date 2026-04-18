@@ -35,7 +35,7 @@ The novel core loop: **camera sees the world → AI reasons about it → body fe
 
 1. **Drop DoorDash-style AI assistant.** Voice agent is in scope but scoped to belt-relevant intents: navigation queries, fall-response, status. Not a general chatbot.
 2. **Webapp = product UI (primary companion surface).** Same live signals—camera, YOLO overlay, IMU trace, haptic state, voice transcript—but shipped as a deliberate product experience: clear hierarchy, calm typography, responsive layout, accessible states (including fall/emergency). Accounts and multi-page routing are out of scope for the hackathon; everything else should read as intentional product design, not a thrown-together debug page.
-3. **USB-CDC for ESP↔Pi.** Serial with a framed JSON protocol. No WiFi/BT for this link.
+3. **USB-CDC for ESP↔Pi at 921600 baud, two-mode protocol.** JSON line-delimited in control mode; raw PCM16 binary stream in audio mode (PTT down). No WiFi/BT for this link. See Interface Contract §1 for framing.
 4. **PTT > wake-word.** Button A on M5 toggles listening. Reliable in noisy venues.
 5. **Primary YOLO runs on Pi CPU** (YOLOv8n, 320×320, ~5 FPS). Laptop is the fallback if Pi is too slow.
 6. **Distance ToF is first-class input**, not a nice-to-have. It catches obstacles YOLO misses and runs at 50Hz.
@@ -116,31 +116,59 @@ Skipped — 2-day clock, user wants execution over deliberation.
 
 These are the source of truth for parallel work. Lock them now, no renegotiation after Day 1 noon.
 
-### 1. Serial Protocol (Pi ↔ M5, USB-CDC, 115200 baud)
+### 1. Serial Protocol (Pi ↔ M5, USB-CDC via CH9102F, **921600 baud, 8N1**)
 
-**Framing:** Newline-delimited JSON. One message per line. UTF-8. No partial frames.
+**Rationale for 921600:** 16kHz PCM16 audio streaming requires ~32 KB/s. 115200 baud ≈ 11.5 KB/s (3× under budget). 921600 gives ~92 KB/s — fits audio 3× over with headroom for control messages. CH9102F on StickC Plus 1.1 supports up to 6 Mbps; 921600 is trivially within spec. Change is one line on each side (`Serial.begin(921600)` / `baudrate=921600`).
 
-**Pi → M5 messages:**
+**Two-mode protocol:**
+
+```
+DEFAULT / CONTROL MODE:
+    Newline-delimited JSON, both directions.
+    One message per line. UTF-8. No partial frames.
+
+AUDIO STREAMING MODE:
+    Triggered when M5 Button A PTT goes DOWN.
+    M5 emits one control line:    {"t":"ptt","state":"down","v":1}
+    Then M5 switches serial writer to RAW BINARY mode:
+        Continuous stream of little-endian int16_t PCM16 samples @ 16kHz.
+        No framing. No base64. No JSON.
+    Pi's serial reader, on seeing the "ptt down" line, flips its
+    read-side into audio-buffer mode, consuming raw bytes until the
+    closing marker appears.
+    When PTT goes UP:
+        M5 stops binary stream, emits a sync preamble (16 zero bytes)
+        followed by:                 {"t":"ptt","state":"up","v":1}
+        Both sides return to CONTROL MODE.
+```
+
+**Design note:** The Pi reader buffers everything between the two PTT lines as raw PCM16, then feeds directly to Whisper's audio buffer. Zero decoding step. On the M5, the DMA mic ring buffer writes straight to `Serial.write((uint8_t*)samples, n*2)` without allocation.
+
+**All JSON messages carry `"v":1`** for forward-compat.
+
+**Pi → M5 messages (control mode):**
 ```json
-{"t":"haptic","dir":"L","intensity":180,"pattern":"pulse","duration_ms":500}
+{"t":"haptic","dir":"L","intensity":180,"pattern":"pulse","duration_ms":500,"v":1}
 // dir: F|B|L|R|ALL, intensity: 0-255, pattern: solid|pulse|ramp|sos
-{"t":"display","line1":"Navigating...","line2":"3 obstacles"}
-{"t":"ping","seq":42}
+{"t":"display","line1":"Navigating...","line2":"3 obstacles","v":1}
+{"t":"ping","seq":42,"v":1}
 ```
 
-**M5 → Pi messages:**
+**M5 → Pi messages (control mode):**
 ```json
-{"t":"imu","ax":0.1,"ay":9.8,"az":0.2,"gx":0,"gy":0,"gz":0,"ts":1700000000}
-{"t":"ptt","state":"down"}  // or "up"
-{"t":"audio","b64":"...base64 PCM16 16kHz frame..."}  // 20ms frames
-{"t":"fall","severity":"hard","az_peak":-28.4}
-{"t":"modulino_imu","ax":...}   // from Modulino Movement
-{"t":"distance","mm":420}
-{"t":"pong","seq":42}
-{"t":"hello","fw":"1.0.0","caps":["imu","mic","haptic","display"]}
+{"t":"imu","ax":0.1,"ay":9.8,"az":0.2,"gx":0,"gy":0,"gz":0,"ts":1700000000,"v":1}
+{"t":"ptt","state":"down","v":1}   // mode switch: next bytes = raw PCM16
+{"t":"ptt","state":"up","v":1}     // mode switch: back to JSON control
+{"t":"fall","severity":"hard","az_peak":-28.4,"v":1}
+{"t":"modulino_imu","ax":0.0,"ay":0.0,"az":0.0,"v":1}
+{"t":"distance","mm":420,"v":1}
+{"t":"pong","seq":42,"v":1}
+{"t":"hello","fw":"1.0.0","caps":["imu","mic","haptic","display"],"v":1}
 ```
 
-**Heartbeat:** Pi sends `ping` every 1s. If no `pong` for 3s → reset serial.
+**Heartbeat:** Pi sends `ping` every 1s. If no `pong` for 3s → Pi emits haptic all-stop and resets serial.
+
+**Stale-command watchdog (M5 side, safety-critical):** If M5 receives no `haptic` or `ping` message for **500ms**, cut all motor outputs to 0 immediately. Prevents a crashed Pi from leaving the wearer with a permanently buzzing motor.
 
 ### 2. I2C Address Map (M5 I2C bus, Grove port, 3.3V/400kHz)
 
@@ -419,3 +447,30 @@ Not applicable — hackathon prototype. The "distribution" is handing the belt t
 - "Forget about the demo, focus on making the product work, we can demo it either ways if we make it work" — that's the right engineering instinct. Teams that chase demo-magic first usually ship flaky code. You're betting on reliability as the differentiator, which is the correct bet for a hardware build.
 - You pushed back on my demo framing twice. Good — it meant you had a clearer picture of what you wanted than I did.
 - Picking the Distance ToF modulino alongside YOLO is actually a sharp call even if you didn't frame it that way. Belt-and-suspenders sensing means the thing still navigates when the AI stack fails. That's how real robotics teams think.
+
+---
+
+## Eng Review Log (2026-04-18)
+
+Applied during `/plan-eng-review`:
+
+- **A1 (serial bandwidth):** Switched to 921600 baud, mode-switching JSON+raw-PCM16 protocol. See §1 Interface Contract.
+- **A2 (stale haptic):** 500ms motor-output watchdog on M5.
+- **A3 (webapp scope):** Sid owns all of it. Accepted risk.
+- **A4 (LLM latency):** Dual-core FreeRTOS task design on ESP32 (sensors/haptic on core 1; serial/mic/display on core 0). Locked `faster-whisper tiny int8` as STT.
+- **A5 (I2C contention):** SOS haptic pattern pauses sensor polling for its duration.
+- **A6 (power):** Day-0 load test on power brick required before Phase 1 starts.
+- **A7 (fusion staleness):** Two-loop fusion — 50Hz Distance-only fast loop + YOLO-cadence slow loop.
+- **A8 (webapp perf):** MJPEG HTTP endpoint for video; WebSocket for structured data only.
+- **CQ1:** `"v":1` on every JSON message.
+- **CQ2:** Fusion inputs carry `ts_ms`; staleness thresholds defined.
+- **CQ3:** One `HapticCommand` dataclass in `pi/models.py`.
+- **CQ4:** `pi/config.py` and `firmware/m5/src/config.h` hold all tunables.
+- **CQ5:** `ruff` + `clang-format` + pre-commit hook.
+- **P1:** `bin/start-belt.sh` warms up Ollama and YOLO before setting `warmup_ok`.
+- **P4:** STT locked to `faster-whisper tiny int8`.
+- **P5:** Phase 1 exit requires 30s YOLO throughput benchmark (p95 < 333ms).
+- **TR1:** No unit tests. Accepted risk. Integration gates #4 (vision) and #5 (voice) tightened to deterministic scripted assertions.
+- **Ops:** Memory-watch logger in `bin/start-belt.sh` to surface Ollama OOM via health WS.
+
+Unresolved decisions: none. Two accepted risks (A3, TR1) logged explicitly.
