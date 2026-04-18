@@ -39,7 +39,7 @@ The novel core loop: **camera sees the world → AI reasons about it → body fe
 4. **PTT > wake-word.** Button A on M5 toggles listening. Reliable in noisy venues.
 5. **Primary YOLO runs on Pi CPU** (YOLOv8n, 320×320, ~5 FPS). Laptop is the fallback if Pi is too slow.
 6. **Distance ToF is first-class input**, not a nice-to-have. It catches obstacles YOLO misses and runs at 50Hz.
-7. **Local-first reasoning on the Rubik Pi.** A small local LLM (default: Ollama + `llama3.2:3b` or smaller/quantized if needed) plus local STT (e.g. Whisper-tiny / faster-whisper) is the **preferred** path for **most decisions**: turning voice into **intent** (`SEEKING`, targets, “what do you see” answers), tightening natural-language responses, and emitting **structured hints** the fusion engine can consume. **YOLO stays on-device** as the vision oracle; the LLM reasons over **detection summaries + distance + user text**, not raw pixels, to save RAM and latency. **If the Phase 1 A4 voice-turn gate fails, ship `KEYWORD_INTENT_ONLY` for intent** (still on-device; assumption A4)—do not burn the clock on quant tuning. **OpenAI Realtime** (or other cloud APIs) is an **optional** path for demos or if local latency/quality misses the bar—never the only way the belt works.
+7. **Local-first reasoning on the Rubik Pi.** A small local LLM (default: Ollama + `gemma3:270m (q4 quantized, ~291 MB)` or smaller/quantized if needed) plus local STT (e.g. Whisper-tiny / faster-whisper) is the **preferred** path for **most decisions**: turning voice into **intent** (`SEEKING`, targets, “what do you see” answers), tightening natural-language responses, and emitting **structured hints** the fusion engine can consume. **YOLO stays on-device** as the vision oracle; the LLM reasons over **detection summaries + distance + user text**, not raw pixels, to save RAM and latency. **If the Phase 1 A4 voice-turn gate fails, ship `KEYWORD_INTENT_ONLY` for intent** (still on-device; assumption A4)—do not burn the clock on quant tuning. **OpenAI Realtime** (or other cloud APIs) is an **optional** path for demos or if local latency/quality misses the bar—never the only way the belt works.
 
 ## Cross-Model Perspective
 
@@ -102,7 +102,7 @@ Skipped — 2-day clock, user wants execution over deliberation.
 
 ### What I'd flag
 
-- **A4 is the biggest risk, and easy to underestimate.** `llama3.2:3b` on a Rubik Pi while also running **STT + inference + TTS + YOLO + FastAPI + serial bridge** is a heavy concurrent stack. Expect **RAM pressure** and **thermal throttling** during a live demo, not just “slow tokens.” The table above makes the mitigation **explicit**: failing the Phase 1 voice turn benchmark means **`KEYWORD_INTENT_ONLY`**, not vague “try a smaller quant” while the clock runs out.
+- **A4 is the biggest risk, and easy to underestimate.** `gemma3:270m (q4 quantized, ~291 MB)` on a Rubik Pi while also running **STT + inference + TTS + YOLO + FastAPI + serial bridge** is a heavy concurrent stack. Expect **RAM pressure** and **thermal throttling** during a live demo, not just “slow tokens.” The table above makes the mitigation **explicit**: failing the Phase 1 voice turn benchmark means **`KEYWORD_INTENT_ONLY`**, not vague “try a smaller quant” while the clock runs out.
 
 - **Camera status vs the written plan.** Phase 1 still says “camera works,” but **in practice this has already burned hours** and may still **not** be confirmed **end-to-end** (e.g. stable stream into the path YOLO/web will use). That is the **actual Day 0 blocker**—more urgent than iterating this document.
 
@@ -353,7 +353,7 @@ Each phase is ~4–6h. Buffer for sleep, meals, and chaos is built in.
 **Phase 4:**
 - Start script: `bin/start-belt.sh` brings up all services, checks hardware, exits non-zero if anything fails.
 - Logging: structured JSON logs to `/var/log/belt/` with rotation.
-- Prestaged **Ollama** + default model (`llama3.2:3b` or agreed smaller quant) on the Rubik; benchmark tokens/s and RAM. Optional `OPENAI_VOICE=1` flip in `voice.py` for cloud-only demos.
+- Prestaged **Ollama** + default model (`gemma3:270m (q4 quantized, ~291 MB)` or agreed smaller quant) on the Rubik; benchmark tokens/s and RAM. Optional `OPENAI_VOICE=1` flip in `voice.py` for cloud-only demos.
 - UI polish pass: motion/jank check on live WS stream, fall/emergency banner reads instantly, 5-minute soak with no layout thrash or unreadable flashes.
 
 **Files Sid owns:** `pi/*`, `webapp/*`, `bin/start-belt.sh`, `docs/architecture.md`.

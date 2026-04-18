@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+*.log
+/var/log/belt/
+yolov8n.pt
+*.onnx
+*.engine
+.DS_Store
+.vscode/
+.idea/
