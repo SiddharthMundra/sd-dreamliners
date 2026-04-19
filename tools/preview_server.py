@@ -55,6 +55,15 @@ async def mjpeg() -> StreamingResponse:
     )
 
 
+@app.get("/mjpeg-overlay")
+async def mjpeg_overlay() -> StreamingResponse:
+    # Preview already bakes a fake YOLO box into _fake_mjpeg, so we alias.
+    return StreamingResponse(
+        _fake_mjpeg(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()

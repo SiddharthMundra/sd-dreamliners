@@ -6,7 +6,6 @@ const els = {
   emergencyX:  document.querySelector(".emergency__dismiss"),
   status:      document.getElementById("status"),
   feedMeta:    document.getElementById("feed-meta"),
-  overlay:     document.getElementById("overlay"),
   hapticMeta:  document.getElementById("haptic-meta"),
   compass:     document.getElementById("compass"),
   hbtns:       Object.fromEntries(
@@ -36,14 +35,11 @@ function fitCanvas(canvas) {
   return { ctx, w: rect.width, h: rect.height };
 }
 
-let imuView     = fitCanvas(els.imuChart);
-let overlayView = fitCanvas(els.overlay);
+let imuView = fitCanvas(els.imuChart);
 
 window.addEventListener("resize", () => {
-  imuView     = fitCanvas(els.imuChart);
-  overlayView = fitCanvas(els.overlay);
+  imuView = fitCanvas(els.imuChart);
   drawIMU();
-  drawOverlay();
 });
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -92,10 +88,11 @@ function dispatch(m) {
 }
 
 // ─── YOLO overlay ───────────────────────────────────────────────────────────
+// Boxes are baked into the /mjpeg-overlay stream server-side, so we no longer
+// draw on the canvas — we just use detection events to update the meta line.
 function onDetections(boxes) {
   lastDetections = boxes || [];
   updateDetectionSummary();
-  drawOverlay();
 }
 
 function updateDetectionSummary() {
@@ -110,51 +107,6 @@ function updateDetectionSummary() {
   meta.textContent = n === 1
     ? `${top.cls} · ${(top.conf * 100).toFixed(0)}%`
     : `${n} objects · top: ${top.cls}`;
-}
-
-function drawOverlay() {
-  if (!overlayView) overlayView = fitCanvas(els.overlay);
-  if (!overlayView) return;
-  const { ctx, w, h } = overlayView;
-  ctx.clearRect(0, 0, w, h);
-  ctx.font      = "500 11px 'Inter', sans-serif";
-  ctx.lineWidth = 1.5;
-
-  for (const b of lastDetections) {
-    const x  = (b.x - b.w / 2) * w;
-    const y  = (b.y - b.h / 2) * h;
-    const bw = b.w * w;
-    const bh = b.h * h;
-
-    // Soft white box with subtle shadow
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-    ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
-    ctx.shadowBlur  = 6;
-    if (ctx.roundRect) {
-      ctx.beginPath();
-      ctx.roundRect(x, y, bw, bh, 6);
-      ctx.stroke();
-    } else {
-      ctx.strokeRect(x, y, bw, bh);
-    }
-    ctx.shadowBlur = 0;
-
-    // Pill label
-    const label  = `${b.cls} · ${(b.conf * 100).toFixed(0)}%`;
-    const tw     = ctx.measureText(label).width + 12;
-    const labelY = y > 22 ? y - 22 : y + bh + 4;
-
-    ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-    if (ctx.roundRect) {
-      ctx.beginPath();
-      ctx.roundRect(x, labelY, tw, 18, 9);
-      ctx.fill();
-    } else {
-      ctx.fillRect(x, labelY, tw, 18);
-    }
-    ctx.fillStyle = "#fff";
-    ctx.fillText(label, x + 6, labelY + 12);
-  }
 }
 
 // ─── IMU chart ──────────────────────────────────────────────────────────────

@@ -24,11 +24,19 @@ from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from pi.models import DistanceReading, FallEvent, IMUSample, VoiceTurn
 from pi.services.camera import CameraService, draw_overlay, encode_jpeg
 
 log = logging.getLogger(__name__)
 
 WEBAPP_DIR = Path(__file__).resolve().parents[2] / "webapp"
+
+_DATACLASS_TAGS: dict[type, str] = {
+    IMUSample: "imu",
+    DistanceReading: "distance",
+    FallEvent: "fall",
+    VoiceTurn: "voice",
+}
 
 
 class WebappServer:
@@ -36,10 +44,12 @@ class WebappServer:
         self,
         camera: CameraService,
         detections_supplier: Callable[[], list] | None = None,
+        health_supplier: Callable[[], dict] | None = None,
     ) -> None:
         self.app = FastAPI(title="Belt")
         self._camera = camera
         self._detections_supplier = detections_supplier or (lambda: [])
+        self._health_supplier = health_supplier or (lambda: {})
         self._clients: set[WebSocket] = set()
         self._clients_lock = asyncio.Lock()
         self._register_routes()
@@ -76,12 +86,13 @@ class WebappServer:
 
         @app.get("/healthz")
         async def healthz() -> dict:
-            frame, ts = self._camera.get_latest_bgr()
+            frame, _ = self._camera.get_latest_bgr()
             return {
                 "camera_backend": self._camera.backend,
                 "camera_fps": round(self._camera.fps, 2),
                 "camera_frame_age_ms": self._camera.frame_age_ms,
                 "camera_has_frame": frame is not None,
+                **self._health_supplier(),
             }
 
         @app.websocket("/ws")
@@ -150,5 +161,9 @@ def _to_dict(msg: dict | object) -> dict:
     if isinstance(msg, dict):
         return msg
     if is_dataclass(msg):
-        return asdict(msg)
+        payload = asdict(msg)
+        tag = _DATACLASS_TAGS.get(type(msg))
+        if tag and "t" not in payload:
+            payload["t"] = tag
+        return payload
     raise TypeError(f"cannot serialize {type(msg)}")

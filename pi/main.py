@@ -42,6 +42,7 @@ class Belt:
         self.webapp = WebappServer(
             self.camera,
             detections_supplier=lambda: self.yolo.get_latest().boxes,
+            health_supplier=self._health_snapshot,
         )
         self.fusion_state = FusionState()
         self.fusion = FusionEngine(self.fusion_state, self._on_haptic)
@@ -82,7 +83,9 @@ class Belt:
                 await self.webapp.broadcast(event)
                 cmd = self.fusion.trigger_fall_sos()
                 await self._on_haptic(cmd)
-                self.voice.speak("Are you okay? Say yes or no.")
+                asyncio.get_running_loop().run_in_executor(
+                    None, self.voice.speak, "Are you okay? Say yes or no."
+                )
             elif t == "_audio_done":
                 await self._handle_voice_turn(msg["audio"])
             elif t == "_audio_timeout":
@@ -106,7 +109,7 @@ class Belt:
         self.fusion_state.intent = intent
         if intent.reply:
             await self.webapp.broadcast(make_assistant_turn(intent.reply))
-            await loop.run_in_executor(None, self.voice.speak, intent.reply)
+            loop.run_in_executor(None, self.voice.speak, intent.reply)
 
     async def _on_haptic(self, cmd: HapticCommand) -> None:
         self.serial.send(cmd.to_wire())
@@ -115,19 +118,21 @@ class Belt:
             "pattern": cmd.pattern, "duration_ms": cmd.duration_ms,
         })
 
+    def _health_snapshot(self) -> dict:
+        return {
+            "serial_ok": self.health.serial_ok,
+            "yolo_fps": self.health.yolo_fps,
+            "warmup_ok": self.health.warmup_ok,
+            "ollama_alive": self.health.ollama_alive,
+            "last_pong_age_ms": self.health.last_pong_age_ms,
+        }
+
     async def _health_loop(self) -> None:
         while True:
             self.health.serial_ok = self.serial.healthy
             self.health.yolo_fps = round(self.yolo.fps, 2)
             self.health.last_pong_age_ms = self.serial.last_pong_age_ms
-            await self.webapp.broadcast({
-                "t": "health",
-                "serial_ok": self.health.serial_ok,
-                "yolo_fps": self.health.yolo_fps,
-                "warmup_ok": self.health.warmup_ok,
-                "ollama_alive": self.health.ollama_alive,
-                "last_pong_age_ms": self.health.last_pong_age_ms,
-            })
+            await self.webapp.broadcast({"t": "health", **self._health_snapshot()})
             await asyncio.sleep(1.0)
 
 

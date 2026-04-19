@@ -31,9 +31,7 @@
   <!-- Top navigation -->
   <header class="nav">
     <div class="nav__brand">
-      <div class="nav__logo">
-        <span class="nav__logo-pulse"></span>
-      </div>
+      <img class="nav__logo-img" src="/static/logo.png?v=2" alt="Fusion Belt logo" decoding="async" />
       <span class="nav__name">Fusion Belt</span>
     </div>
 
@@ -60,8 +58,7 @@
         <span class="card__meta" id="feed-meta">No detections</span>
       </div>
       <div class="feed">
-        <img id="feed" src="/mjpeg" alt="camera feed" />
-        <canvas id="overlay" width="320" height="320"></canvas>
+        <img id="feed" src="http://10.10.9.207:8000/mjpeg-overlay" alt="YOLO live feed" />
 
         <!-- Subtle scan beam -->
         <div class="feed__scan" aria-hidden="true"></div>

@@ -15,14 +15,55 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import random
+import shutil
+import subprocess
 import sys
+import tempfile
+import wave
 from time import time
 
 HOST = "localhost"
 PORT = 5555
+CTRL_PORT = 5556
 PROTOCOL_VERSION = 1
 SAMPLE_RATE = 16000
+
+_PIPER_BIN = shutil.which("piper") or os.path.expanduser("~/.local/bin/piper")
+_PIPER_VOICE = os.path.expanduser("~/sd-dreamliners/voices/en_US-amy-low.onnx")
+_PIPER_AVAILABLE = os.path.exists(_PIPER_BIN) and os.path.exists(_PIPER_VOICE)
+
+
+def _sine_pcm16(seconds: float, freq: int = 200) -> bytes:
+    n = int(SAMPLE_RATE * seconds)
+    out = bytearray()
+    for i in range(n):
+        v = int(3000 * math.sin(2 * math.pi * freq * i / SAMPLE_RATE))
+        out += int.to_bytes(v & 0xFFFF, 2, "little", signed=False)
+    return bytes(out)
+
+
+def _piper_pcm16(phrase: str) -> bytes:
+    """Synth `phrase` with Piper and return mono 16kHz PCM16."""
+    with tempfile.NamedTemporaryFile(suffix=".wav") as wav:
+        subprocess.run(
+            [_PIPER_BIN, "--model", _PIPER_VOICE, "--output_file", wav.name],
+            input=phrase.encode(), check=True, stderr=subprocess.DEVNULL,
+        )
+        with wave.open(wav.name, "rb") as w:
+            sr = w.getframerate()
+            frames = w.readframes(w.getnframes())
+    if sr == SAMPLE_RATE:
+        return frames
+    arr = bytearray()
+    ratio = SAMPLE_RATE / sr
+    src = memoryview(frames).cast("h")
+    new_len = int(len(src) * ratio)
+    for i in range(new_len):
+        s = src[min(int(i / ratio), len(src) - 1)]
+        arr += int.to_bytes(s & 0xFFFF, 2, "little", signed=False)
+    return bytes(arr)
 
 
 def _now_ms() -> int:
@@ -110,26 +151,25 @@ class FakeM5:
         except ConnectionResetError:
             pass
 
-    async def trigger_ptt(self, duration_s: float = 0.8) -> None:
+    async def trigger_ptt(self, phrase: str = "find a bottle") -> None:
+        """Send a PTT cycle. Uses real Piper-synthesized speech when available
+        (so Whisper actually transcribes something); falls back to a 0.8s sine.
+        Synthesis is offloaded to a thread so the event loop stays responsive."""
         if self.writer is None:
             print("[fake-m5] no client connected")
             return
-        print(f"[fake-m5] PTT down -> {duration_s}s audio -> PTT up")
+        loop = asyncio.get_running_loop()
+        if _PIPER_AVAILABLE:
+            pcm = await loop.run_in_executor(None, _piper_pcm16, phrase)
+        else:
+            pcm = _sine_pcm16(0.8)
+        print(f"[fake-m5] PTT down -> {len(pcm) / 32000:.2f}s audio ({phrase!r}) -> PTT up")
         await self._send({"t": "ptt", "state": "down"})
-        # Stream raw PCM16 silence with a small sine for non-zero content.
-        n_samples = int(SAMPLE_RATE * duration_s)
-        chunk_n = 320  # 20ms chunks
-        for start in range(0, n_samples, chunk_n):
-            end = min(start + chunk_n, n_samples)
-            samples = bytearray()
-            for i in range(start, end):
-                # 200 Hz tone, low amplitude (~10% full scale).
-                v = int(3000 * math.sin(2 * math.pi * 200 * i / SAMPLE_RATE))
-                samples += int.to_bytes(v & 0xFFFF, 2, "little", signed=False)
-            self.writer.write(bytes(samples))
+        chunk = 640  # 20ms at 16kHz
+        for off in range(0, len(pcm), chunk):
+            self.writer.write(pcm[off:off + chunk])
             await self.writer.drain()
             await asyncio.sleep(0.02)
-        # Sync preamble: 16 zero bytes, then the JSON line.
         self.writer.write(b"\x00" * 16)
         self.writer.write(_line({"t": "ptt", "state": "up"}))
         await self.writer.drain()
@@ -141,6 +181,23 @@ class FakeM5:
         await self._send({"t": "distance", "mm": mm})
 
 
+async def _handle_command(m5: FakeM5, c: str) -> str:
+    c = c.strip().lower()
+    if c == "p":
+        await m5.trigger_ptt()
+        return "OK ptt\n"
+    if c == "f":
+        await m5.trigger_fall()
+        return "OK fall\n"
+    if c == "d":
+        mm = random.randint(200, 600)
+        await m5.trigger_distance(mm)
+        return f"OK distance {mm}\n"
+    if c == "q":
+        return "BYE\n"
+    return f"ERR unknown command: {c!r}\n"
+
+
 async def _stdin_loop(m5: FakeM5) -> None:
     print("[fake-m5] commands: p=PTT cycle, f=fall, d=close obstacle, q=quit")
     loop = asyncio.get_running_loop()
@@ -149,21 +206,34 @@ async def _stdin_loop(m5: FakeM5) -> None:
         if not line:
             await asyncio.sleep(0.1)
             continue
-        c = line.strip().lower()
-        if c == "p":
-            await m5.trigger_ptt()
-        elif c == "f":
-            await m5.trigger_fall()
-        elif c == "d":
-            await m5.trigger_distance(random.randint(200, 600))
-        elif c == "q":
-            print("[fake-m5] bye")
+        reply = await _handle_command(m5, line)
+        print(f"[fake-m5] {reply.strip()}")
+        if line.strip().lower() == "q":
             return
+
+
+async def _ctrl_server(m5: FakeM5) -> None:
+    async def on_ctrl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        line = await reader.readline()
+        if line:
+            reply = await _handle_command(m5, line.decode(errors="ignore"))
+            writer.write(reply.encode())
+            await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(on_ctrl, HOST, CTRL_PORT)
+    print(f"[fake-m5] control listening on {HOST}:{CTRL_PORT} (echo p/f/d into TCP to trigger)")
+    async with server:
+        await server.serve_forever()
 
 
 async def main() -> None:
     m5 = FakeM5()
-    await asyncio.gather(m5.serve(), _stdin_loop(m5))
+    use_stdin = sys.stdin.isatty()
+    tasks = [m5.serve(), _ctrl_server(m5)]
+    if use_stdin:
+        tasks.append(_stdin_loop(m5))
+    await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
