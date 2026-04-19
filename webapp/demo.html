@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fusion Belt · Demo Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    :root {
+      --bg: #0b0d10; --card: #13161b; --border: #1e2228;
+      --text: #e4e8ec; --muted: #6b7280; --accent: #7a9e7e;
+      --danger: #c8847a; --warn: #d4a574; --ok: #7a9e7e;
+      --radius: 12px; --mono: 'JetBrains Mono', monospace;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.5; min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100; background: var(--bg);
+    }
+    .header__left { display: flex; align-items: center; gap: 12px; }
+    .header__title { font-size: 18px; font-weight: 600; }
+    .header__badge {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 3px 8px; border-radius: 4px;
+      background: var(--accent); color: #000;
+    }
+    .header__links { display: flex; gap: 12px; }
+    .header__links a {
+      color: var(--muted); text-decoration: none; font-size: 13px;
+      transition: color .15s;
+    }
+    .header__links a:hover { color: var(--text); }
+
+    .conn-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 500; color: var(--muted);
+    }
+    .conn-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--danger); transition: background .3s;
+    }
+    .conn-pill.connected .dot { background: var(--ok); }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid; gap: 16px; padding: 20px 24px;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .card__head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+    .card__title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .card__body { padding: 16px; }
+
+    /* ── Form elements ── */
+    label { font-size: 12px; font-weight: 500; color: var(--muted); display: block; margin-bottom: 4px; }
+    input[type="range"] {
+      width: 100%; accent-color: var(--accent); height: 6px;
+      -webkit-appearance: none; appearance: none; background: var(--border);
+      border-radius: 3px; outline: none; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+    }
+    input[type="text"], input[type="number"], textarea {
+      width: 100%; padding: 8px 12px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: var(--mono); font-size: 13px;
+      outline: none; transition: border-color .15s;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 60px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg); color: var(--text); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all .15s; font-family: inherit;
+    }
+    .btn:hover { border-color: var(--accent); background: rgba(122,158,126,0.08); }
+    .btn:active { transform: scale(0.97); }
+    .btn--accent { background: var(--accent); color: #000; border-color: var(--accent); }
+    .btn--accent:hover { background: #8dba92; }
+    .btn--danger { border-color: var(--danger); color: var(--danger); }
+    .btn--danger:hover { background: rgba(200,132,122,0.12); }
+    .btn--sm { padding: 6px 10px; font-size: 12px; }
+    .btn--fire { min-width: 64px; }
+    .btn--fire.is-active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .row--spread { justify-content: space-between; }
+    .row--wrap { flex-wrap: wrap; }
+
+    .slider-group { flex: 1; }
+    .slider-group .val {
+      font-family: var(--mono); font-size: 12px; color: var(--accent);
+      float: right; margin-top: -18px;
+    }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+    /* ── Motor grid ── */
+    .motor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .motor-cell {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; text-align: center;
+      transition: border-color .2s;
+    }
+    .motor-cell.is-on { border-color: var(--accent); box-shadow: 0 0 12px rgba(122,158,126,0.15); }
+    .motor-cell__name { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px; }
+    .motor-cell__idx { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+    /* ── US overrides ── */
+    .us-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .us-row__label { width: 56px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    .us-row__slider { flex: 1; }
+    .us-row__val { width: 52px; text-align: right; font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+    /* ── Haptic compass ── */
+    .haptic-compass {
+      display: grid; grid-template-areas: ". f ." "l c r" ". b .";
+      grid-template-columns: 1fr 1fr 1fr; gap: 6px; max-width: 200px; margin: 0 auto;
+    }
+    .haptic-compass .btn[data-dir="F"] { grid-area: f; }
+    .haptic-compass .btn[data-dir="L"] { grid-area: l; }
+    .haptic-compass .btn[data-dir="R"] { grid-area: r; }
+    .haptic-compass .btn[data-dir="B"] { grid-area: b; }
+    .haptic-compass .btn[data-dir="ALL"] { grid-area: c; font-size: 10px; }
+
+    /* ── Nav controls ── */
+    .nav-ctrl { display: flex; gap: 12px; }
+    .nav-ctrl__dial {
+      width: 100px; height: 100px; border-radius: 50%;
+      border: 2px solid var(--border); position: relative;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 20px; font-weight: 600;
+      color: var(--accent); flex-shrink: 0;
+    }
+    .nav-ctrl__fields { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+    /* ── Feed ── */
+    .feed-frame {
+      width: 100%; border-radius: 8px; overflow: hidden;
+      background: #000; aspect-ratio: 16/9;
+    }
+    .feed-frame img { width: 100%; height: 100%; object-fit: contain; }
+
+    /* ── Log ── */
+    .log {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; max-height: 200px; overflow-y: auto;
+      font-family: var(--mono); font-size: 11px; color: var(--muted);
+      line-height: 1.6;
+    }
+    .log .ts { color: #555; }
+    .log .ok { color: var(--ok); }
+    .log .err { color: var(--danger); }
+    .log .info { color: var(--accent); }
+
+    /* ── Mode toggle ── */
+    .mode-toggle {
+      display: flex; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .mode-toggle__opt {
+      flex: 1; padding: 6px 14px; text-align: center; font-size: 12px;
+      font-weight: 600; cursor: pointer; transition: all .15s;
+      border: none; background: transparent; color: var(--muted);
+      font-family: inherit;
+    }
+    .mode-toggle__opt.is-active {
+      background: var(--accent); color: #000;
+    }
+
+    @media (max-width: 720px) {
+      .grid { grid-template-columns: 1fr; padding: 12px; }
+      .header { padding: 12px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header__left">
+      <span class="header__title">Fusion Belt</span>
+      <span class="header__badge">Demo Panel</span>
+      <span class="conn-pill" id="conn">
+        <span class="dot"></span>
+        <span class="conn-label">Connecting</span>
+      </span>
+    </div>
+    <div class="header__links">
+      <a href="/">Dashboard</a>
+      <a href="/demo">Demo Panel</a>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ── Mode ── -->
+    <div class="card" style="grid-column: 1 / -1">
+      <div class="card__head">
+        <span class="card__title">Mode</span>
+        <div class="mode-toggle" id="mode-toggle">
+          <button class="mode-toggle__opt is-active" data-mode="live">Live belt</button>
+          <button class="mode-toggle__opt" data-mode="demo">Haptic bench</button>
+        </div>
+      </div>
+      <div class="card__body" style="padding:10px 16px;">
+        <p style="font-size:12px; color:var(--muted);">
+          <strong>Live belt</strong> = M5 ultrasonics, button, fall, and fusion/narrator haptics all active.
+          <strong>Haptic bench</strong> = only IMU still streams from the M5; distance is synthetic from the sliders here; fusion and navigator haptics are off so motors only move when you command them. Camera + YOLO keep running.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Motors ── -->
+    <div class="card">
+      <div class="card__head"><span class="card__title">Motors</span></div>
+      <div class="card__body">
+        <div class="row" style="margin-top:0">
+          <div class="slider-group">
+            <label>Power <span class="val" id="motor-pw-val">30</span></label>
+            <input type="range" id="motor-pw" min="1" max="50" value="30" />
+          </div>
+          <div class="slider-group">
+            <label>Duration <span class="val" id="motor-ms-val">300 ms</span></label>
+            <input type="range" id="motor-ms" min="50" max="3000" step="50" value="300" />
+          </div>
+        </div>
+        <div class="motor-grid" style="margin-top:12px">
+          <div class="motor-cell" id="mc-0">
+            <div class="motor-cell__name">Left</div>
+            <button class="btn btn--fire" onclick="fireMotor(0)">Fire</button>
+            <div class="motor-cell__idx">idx 0 · 0x38</div>
+          </div>
+          <div class="motor-cell" id="mc-1">
+            <div class="motor-cell__name">Front</div>
+            <button class="btn btn--fire" onclick="fireMotor(1)">Fire</button>
+            <div class="motor-cell__idx">idx 1 · 0x39</div>
+          </div>
+          <div class="motor-cell" id="mc-2">
+            <div class="motor-cell__name">Right</div>
+            <button class="btn btn--fire" onclick="fireMotor(2)">Fire</button>
+            <div class="motor-cell__idx">idx 2 · 0x3A</div>
+          </div>
+          <div class="motor-cell" id="mc-3">
+            <div class="motor-cell__name">Back</div>
+            <button class="btn btn--fire" onclick="fireMotor(3)">Fire</button>
+            <div class="motor-cell__idx">idx 3 · 0x3B</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn btn--accent" onclick="fireMotorAll()">Fire All</button>
+          <button class="btn btn--danger" onclick="stopMotors()">Stop All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Synthetic proximity (bench) ── -->
+    <div class="card">
+      <div class="card__head">
+        <span class="card__title">Proximity (bench)</span>
+        <button class="btn btn--sm" id="us-live-btn" onclick="usLive()">Exit bench → Live</button>
+      </div>
+      <div class="card__body">
+        <div class="us-row">
+          <span class="us-row__label">L 45°</span>
+          <input class="us-row__slider" type="range" id="us-L" min="0" max="3000" value="1500" />
+          <span class="us-row__val" id="us-L-val">1500</span>
+        </div>
+        <div class="us-row">
+          <span class="us-row__label">R 45°</span>
+          <input class="us-row__slider" type="range" id="us-R" min="0" max="3000" value="1500" />
+          <span class="us-row__val" id="us-R-val">1500</span>
+        </div>
+        <div class="us-row">
+          <span class="us-row__label">Front</span>
+          <input class="us-row__slider" type="range" id="us-F" min="0" max="3000" value="1500" />
+          <span class="us-row__val" id="us-F-val">1500</span>
+        </div>
+        <div class="us-row">
+          <span class="us-row__label">Back</span>
+          <input class="us-row__slider" type="range" id="us-B" min="0" max="3000" value="2000" />
+          <span class="us-row__val" id="us-B-val">2000</span>
+        </div>
+        <p style="font-size:11px; color:var(--muted); margin-bottom:8px;">Move sliders in <strong>Haptic bench</strong> to stream values to the dashboard (throttled). Or snap once:</p>
+        <button class="btn btn--accent" style="width:100%; margin-top:4px" onclick="usPush(false)">Snap to dashboard</button>
+      </div>
+    </div>
+
+    <!-- ── Haptic Trigger ── -->
+    <div class="card">
+      <div class="card__head"><span class="card__title">Haptic (full control)</span></div>
+      <div class="card__body">
+        <div class="row" style="margin-top:0; align-items:flex-end;">
+          <div class="slider-group">
+            <label>Pattern</label>
+            <select id="haptic-pattern" style="width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px;">
+              <option value="pulse">pulse</option>
+              <option value="solid">solid</option>
+              <option value="ramp">ramp</option>
+              <option value="sos">sos</option>
+            </select>
+          </div>
+        </div>
+        <div class="slider-group" style="margin-bottom:12px; margin-top:10px;">
+          <label>Intensity <span class="val" id="haptic-int-val">180</span></label>
+          <input type="range" id="haptic-int" min="0" max="255" value="180" />
+        </div>
+        <div class="slider-group" style="margin-bottom:14px">
+          <label>Duration <span class="val" id="haptic-ms-val">300 ms</span></label>
+          <input type="range" id="haptic-ms" min="50" max="2000" step="50" value="300" />
+        </div>
+        <div class="haptic-compass">
+          <button class="btn btn--fire" data-dir="F" onclick="fireHaptic('F')">F</button>
+          <button class="btn btn--fire" data-dir="L" onclick="fireHaptic('L')">L</button>
+          <button class="btn btn--fire" data-dir="ALL" onclick="fireHaptic('ALL')">ALL</button>
+          <button class="btn btn--fire" data-dir="R" onclick="fireHaptic('R')">R</button>
+          <button class="btn btn--fire" data-dir="B" onclick="fireHaptic('B')">B</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Voice / TTS ── -->
+    <div class="card">
+      <div class="card__head"><span class="card__title">Voice / TTS</span></div>
+      <div class="card__body">
+        <label>Speak text (piper TTS)</label>
+        <textarea id="tts-text" placeholder="Type anything to speak aloud...">obstacle on your left, step right.</textarea>
+        <button class="btn btn--accent" style="width:100%; margin-top:8px" onclick="speakTTS()">Speak</button>
+        <hr class="divider" />
+        <label>Inject transcript (appears on dashboard)</label>
+        <div class="row" style="margin-top:4px">
+          <select id="inject-role" style="padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px;">
+            <option value="user">User</option>
+            <option value="assistant">Assistant</option>
+          </select>
+          <input type="text" id="inject-text" placeholder="Transcript line..." style="flex:1" />
+          <button class="btn btn--sm" onclick="injectTranscript()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Navigation Override ── -->
+    <div class="card">
+      <div class="card__head"><span class="card__title">Navigation Override</span></div>
+      <div class="card__body">
+        <div class="nav-ctrl">
+          <div class="nav-ctrl__dial" id="nav-dial">000</div>
+          <div class="nav-ctrl__fields">
+            <div class="slider-group">
+              <label>Bearing <span class="val" id="nav-bearing-val">0°</span></label>
+              <div class="row" style="margin-top:4px; gap:6px;">
+                <button type="button" class="btn btn--sm" onclick="nudgeBearing(-15)" title="Left 15°">◀ 15°</button>
+                <input type="range" id="nav-bearing" min="0" max="359" value="0" style="flex:1" />
+                <button type="button" class="btn btn--sm" onclick="nudgeBearing(15)" title="Right 15°">15° ▶</button>
+              </div>
+            </div>
+            <div>
+              <label>Threat text</label>
+              <input type="text" id="nav-threat" value="Corridor nominal" />
+            </div>
+            <div>
+              <label>Zone</label>
+              <input type="text" id="nav-zone" value="Grid 7α" />
+            </div>
+          </div>
+        </div>
+        <button class="btn btn--accent" style="width:100%; margin-top:10px" onclick="pushNav()">Push Nav</button>
+      </div>
+    </div>
+
+    <!-- ── Camera Feed ── -->
+    <div class="card">
+      <div class="card__head"><span class="card__title">Camera + YOLO</span></div>
+      <div class="card__body" style="padding:8px">
+        <div class="feed-frame">
+          <img id="feed" src="/mjpeg-overlay" alt="YOLO live feed" crossorigin="anonymous" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Event Log ── -->
+    <div class="card" style="grid-column: 1 / -1">
+      <div class="card__head">
+        <span class="card__title">Event Log</span>
+        <button class="btn btn--sm" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="card__body" style="padding:8px 12px">
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+"use strict";
+
+const BELT_PI_HOST = "10.10.9.207:8000";
+const wsHost = (location.host === BELT_PI_HOST || location.hostname === "10.10.9.207")
+  ? location.host : BELT_PI_HOST;
+const ws = new WebSocket(`ws://${wsHost}/ws`);
+
+const connEl = document.getElementById("conn");
+ws.onopen  = () => { connEl.className = "conn-pill connected"; connEl.querySelector(".conn-label").textContent = "Connected"; };
+ws.onclose = () => { connEl.className = "conn-pill"; connEl.querySelector(".conn-label").textContent = "Disconnected"; };
+ws.onerror = () => { connEl.className = "conn-pill"; };
+
+ws.onmessage = ev => {
+  let m; try { m = JSON.parse(ev.data); } catch { return; }
+  if (m.t === "ack" || m.t === "err") logLine(m.t === "ack" ? "ok" : "err", `${m.t}: ${m.what || JSON.stringify(m)}`);
+  if (m.t === "health") logLine("info", `fps: video=${(m.stream_fps||0).toFixed(1)} yolo=${(m.yolo_fps||0).toFixed(1)}`);
+};
+
+let benchMode = false;
+
+function send(obj, opts = {}) {
+  if (ws.readyState !== WebSocket.OPEN) { logLine("err", "WebSocket not connected"); return; }
+  ws.send(JSON.stringify(obj));
+  if (!opts.silent) logLine("info", `→ ${JSON.stringify(obj)}`);
+}
+
+// ── Sliders ──
+function bindSlider(id, valId, fmt) {
+  const sl = document.getElementById(id), vl = document.getElementById(valId);
+  sl.addEventListener("input", () => { vl.textContent = fmt(sl.value); });
+}
+bindSlider("motor-pw", "motor-pw-val", v => v);
+bindSlider("motor-ms", "motor-ms-val", v => v + " ms");
+bindSlider("haptic-int", "haptic-int-val", v => v);
+bindSlider("haptic-ms", "haptic-ms-val", v => v + " ms");
+bindSlider("nav-bearing", "nav-bearing-val", v => v + "°");
+
+document.getElementById("nav-bearing").addEventListener("input", function() {
+  document.getElementById("nav-dial").textContent = String(this.value).padStart(3, "0");
+});
+
+for (const dir of ["L", "R", "F", "B"]) {
+  bindSlider("us-" + dir, "us-" + dir + "-val", v => v);
+}
+
+let usStreamRaf = null;
+function scheduleUsStream() {
+  if (!benchMode) return;
+  if (usStreamRaf) return;
+  usStreamRaf = requestAnimationFrame(() => {
+    usStreamRaf = null;
+    usPush(true);
+  });
+}
+for (const dir of ["L", "R", "F", "B"]) {
+  document.getElementById("us-" + dir).addEventListener("input", scheduleUsStream);
+}
+
+// ── Motors ──
+function fireMotor(idx) {
+  const pw = +document.getElementById("motor-pw").value;
+  const ms = +document.getElementById("motor-ms").value;
+  send({ t: "demo_motor", idx, power: pw, ms });
+  flashMotorCell(idx, ms);
+}
+function fireMotorAll() {
+  const pw = +document.getElementById("motor-pw").value;
+  const ms = +document.getElementById("motor-ms").value;
+  send({ t: "demo_motor_all", power: pw, ms });
+  for (let i = 0; i < 4; i++) flashMotorCell(i, ms);
+}
+function stopMotors() { send({ t: "demo_motor_stop" }); }
+
+function flashMotorCell(idx, ms) {
+  const el = document.getElementById("mc-" + idx);
+  el.classList.add("is-on");
+  setTimeout(() => el.classList.remove("is-on"), Math.min(ms, 2000));
+}
+
+// ── Proximity (bench) ──
+function usPush(quiet) {
+  const payload = {
+    t: "demo_distance",
+    L: +document.getElementById("us-L").value,
+    R: +document.getElementById("us-R").value,
+    F: +document.getElementById("us-F").value,
+    B: +document.getElementById("us-B").value,
+  };
+  if (quiet) payload.quiet = true;
+  send(payload, { silent: !!quiet });
+}
+function usLive() {
+  document.querySelectorAll(".mode-toggle__opt").forEach(b => {
+    b.classList.toggle("is-active", b.dataset.mode === "live");
+  });
+  benchMode = false;
+  send({ t: "demo_distance_live" });
+}
+
+// ── Haptics ──
+function fireHaptic(dir) {
+  const intensity = +document.getElementById("haptic-int").value;
+  const ms = +document.getElementById("haptic-ms").value;
+  const pattern = document.getElementById("haptic-pattern").value;
+  send({ t: "demo_haptic", dir, intensity, ms, pattern });
+}
+
+// ── Voice ──
+function speakTTS() {
+  const text = document.getElementById("tts-text").value.trim();
+  if (!text) return;
+  send({ t: "demo_tts", text });
+}
+function injectTranscript() {
+  const role = document.getElementById("inject-role").value;
+  const text = document.getElementById("inject-text").value.trim();
+  if (!text) return;
+  send({ t: "demo_voice_inject", role, text });
+  document.getElementById("inject-text").value = "";
+}
+
+// ── Nav ──
+function pushNav() {
+  send({
+    t: "demo_nav",
+    bearing: +document.getElementById("nav-bearing").value,
+    threat: document.getElementById("nav-threat").value,
+    zone: document.getElementById("nav-zone").value,
+  });
+}
+
+// ── Mode toggle ──
+document.querySelectorAll(".mode-toggle__opt").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mode-toggle__opt").forEach(b => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    benchMode = btn.dataset.mode === "demo";
+    send({ t: "demo_mode", mode: btn.dataset.mode });
+  });
+});
+
+function nudgeBearing(delta) {
+  const el = document.getElementById("nav-bearing");
+  let v = (+el.value + delta + 360) % 360;
+  el.value = String(v);
+  el.dispatchEvent(new Event("input"));
+  pushNav();
+}
+
+// ── Log ──
+const logEl = document.getElementById("log");
+function logLine(cls, msg) {
+  const now = new Date();
+  const ts = [now.getHours(), now.getMinutes(), now.getSeconds()].map(n => String(n).padStart(2,"0")).join(":");
+  const line = document.createElement("div");
+  line.innerHTML = `<span class="ts">${ts}</span> <span class="${cls}">${escHtml(msg)}</span>`;
+  logEl.appendChild(line);
+  if (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog() { logEl.innerHTML = ""; }
+function escHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+logLine("info", "Demo panel ready. Connect to belt and tune away.");
+</script>
+</body>
+</html>

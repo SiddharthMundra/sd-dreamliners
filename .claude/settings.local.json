@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p archive)",
+      "Bash(mv yolov8n.pt archive/)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('pi/main.py'\\).read\\(\\)\\); ast.parse\\(open\\('pi/config.py'\\).read\\(\\)\\); print\\('pi/ parses clean'\\)\")"
+    ]
+  }
+}

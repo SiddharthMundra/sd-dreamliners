@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs & captures
+*.log
+/var/log/belt/
+pi/bench/results/
+*.wav
+*.pcm
+
+# Model weights (never commit — download or symlink at runtime)
+*.pt
+*.onnx
+*.eim
+*.dlc
+*.tflite
+*.engine
+*.so
+models/qaihub/
+voices/*.onnx
+voices/*.bin
+
+# PlatformIO
+m5stack-starkhacks/.pio/
+.pio/
+
+# Archived snapshots — keep local, keep out of git
+archive/
+
+# Node (if any tooling pulls it in)
+node_modules/

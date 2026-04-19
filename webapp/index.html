@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fusion Belt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- Ambient background -->
+  <div class="bg" aria-hidden="true"></div>
+
+  <!-- Emergency banner -->
+  <div id="emergency" class="emergency hidden" role="alert" aria-live="assertive">
+    <div class="emergency__dot"></div>
+    <div class="emergency__copy">
+      <span class="emergency__title">Fall detected</span>
+      <span class="emergency__sub">Emergency response engaged</span>
+    </div>
+    <button class="emergency__dismiss" type="button" aria-label="Dismiss">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Top navigation -->
+  <header class="nav">
+    <div class="nav__brand">
+      <img class="nav__logo-img" src="/static/logo.png?v=2" alt="Fusion Belt logo" decoding="async" />
+      <span class="nav__name">Fusion Belt</span>
+    </div>
+
+    <nav class="nav__status" id="status">
+      <span class="chip" data-key="serial">Serial</span>
+      <span class="chip" data-key="yolo">Vision</span>
+      <span class="chip" data-key="warmup">Warmup</span>
+      <span class="chip" data-key="ollama">LLM</span>
+    </nav>
+
+    <div class="nav__conn" id="conn-state">
+      <span class="conn-dot"></span>
+      <span class="conn-label">Connecting</span>
+    </div>
+  </header>
+
+  <!-- Main grid -->
+  <main class="grid">
+
+    <!-- Camera feed -->
+    <section class="card card--feed" style="--delay: 0ms">
+      <div class="card__head">
+        <h2 class="card__title">Live feed</h2>
+        <span class="card__meta" id="feed-meta">No detections</span>
+      </div>
+      <div class="feed">
+        <img id="feed" src="http://10.10.9.207:8000/mjpeg-overlay" alt="YOLO live feed" />
+
+        <!-- Subtle scan beam -->
+        <div class="feed__scan" aria-hidden="true"></div>
+
+        <!-- HUD overlays -->
+        <div class="feed__hud feed__hud--top">
+          <span class="feed__pill feed__pill--live">
+            <span class="feed__live-dot"></span>
+            Live
+          </span>
+          <span class="feed__pill" id="feed-fps">— fps</span>
+        </div>
+
+        <div class="feed__hud feed__hud--bottom">
+          <span class="feed__model">YOLO v8n</span>
+          <span class="feed__time" id="feed-time">--:--:--</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Haptic compass -->
+    <section class="card card--haptic" style="--delay: 80ms">
+      <div class="card__head">
+        <h2 class="card__title">Haptic</h2>
+        <span class="card__meta" id="haptic-meta">Idle</span>
+      </div>
+      <div class="compass-wrap">
+        <div class="compass" id="compass">
+          <div class="compass__ring"></div>
+          <div class="compass__ring compass__ring--inner"></div>
+          <div class="compass__pulse"></div>
+          <div class="compass__hub"></div>
+          <button class="hbtn" data-dir="F" type="button" aria-label="Forward">F</button>
+          <button class="hbtn" data-dir="L" type="button" aria-label="Left">L</button>
+          <button class="hbtn" data-dir="R" type="button" aria-label="Right">R</button>
+          <button class="hbtn" data-dir="B" type="button" aria-label="Back">B</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fusion: polar field + proximity rows -->
+    <section class="card card--fusion" style="--delay: 160ms">
+      <div class="card__head">
+        <h2 class="card__title">Fusion field</h2>
+        <span class="card__meta card__meta--fusion" id="dist-state">Standby</span>
+      </div>
+      <p class="fusion__strip" id="fusion-strip">Vision + ultrasonics + haptics unified</p>
+      <div class="fusion__body">
+        <div class="fusion__radar-shell">
+          <div class="fusion__radar-glow" aria-hidden="true"></div>
+          <svg class="fusion__radar" id="fusion-radar" viewBox="-105 -105 210 210" aria-hidden="true">
+            <defs>
+              <radialGradient id="fusionGradCore" cx="40%" cy="35%">
+                <stop offset="0%" stop-color="rgba(122,158,126,0.35)"/>
+                <stop offset="55%" stop-color="rgba(122,158,126,0.06)"/>
+                <stop offset="100%" stop-color="transparent"/>
+              </radialGradient>
+              <linearGradient id="fusionRay" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="rgba(122,158,126,0.85)"/>
+                <stop offset="100%" stop-color="rgba(122,158,126,0)"/>
+              </linearGradient>
+            </defs>
+            <circle class="fusion__orbit fusion__orbit--o3" r="98" />
+            <circle class="fusion__orbit fusion__orbit--o2" r="72" />
+            <circle class="fusion__orbit fusion__orbit--o1" r="46" />
+            <line class="fusion__axis" x1="0" y1="-100" x2="0" y2="100" />
+            <line class="fusion__axis" x1="-100" y1="0" x2="100" y2="0" />
+            <path id="fusion-wedge-F" class="fusion__wedge" d="M0,0 L-34.4,-83.1 A90,90 0 0,1 34.4,-83.1 Z" />
+            <path id="fusion-wedge-R" class="fusion__wedge" d="M0,0 L34.4,-83.1 A90,90 0 0,1 83.1,-34.4 Z" />
+            <path id="fusion-wedge-B" class="fusion__wedge" d="M0,0 L83.1,-34.4 A90,90 0 1,1 -83.1,-34.4 Z" />
+            <path id="fusion-wedge-L" class="fusion__wedge" d="M0,0 L-83.1,-34.4 A90,90 0 0,1 -34.4,-83.1 Z" />
+            <circle r="22" fill="url(#fusionGradCore)" />
+            <circle r="7" class="fusion__core-dot" />
+          </svg>
+          <div class="fusion__core-label" id="fusion-core-label">SYNC</div>
+        </div>
+
+        <ul class="prox prox--fusion" id="prox">
+        <li class="prox__row" data-dir="F">
+          <span class="prox__arrow" aria-hidden="true">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M7 11V3M3.5 6.5L7 3l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="prox__label">Front</span>
+          <div class="prox__bar"><div class="prox__fill"></div></div>
+          <span class="prox__value">—</span>
+        </li>
+        <li class="prox__row" data-dir="R">
+          <span class="prox__arrow" aria-hidden="true">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="prox__label">Right 45°</span>
+          <div class="prox__bar"><div class="prox__fill"></div></div>
+          <span class="prox__value">—</span>
+        </li>
+        <li class="prox__row" data-dir="L">
+          <span class="prox__arrow" aria-hidden="true">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M11 7H3M6.5 3.5L3 7l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="prox__label">Left 45°</span>
+          <div class="prox__bar"><div class="prox__fill"></div></div>
+          <span class="prox__value">—</span>
+        </li>
+        <li class="prox__row" data-dir="B">
+          <span class="prox__arrow" aria-hidden="true">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3.5 7.5L7 11l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="prox__label">Back</span>
+          <div class="prox__bar"><div class="prox__fill"></div></div>
+          <span class="prox__value">—</span>
+        </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Tactical nav (synthetic map driven by fusion) -->
+    <section class="card card--navmap" style="--delay: 200ms">
+      <div class="card__head">
+        <h2 class="card__title">Navigation</h2>
+        <span class="card__meta"><span id="nav-zone">Grid 7α</span></span>
+      </div>
+      <div class="navmap">
+        <canvas id="nav-map" width="400" height="260"></canvas>
+        <div class="navmap__hud">
+          <span class="navmap__chip" id="nav-bearing">HDG 000°</span>
+          <span class="navmap__chip navmap__chip--accent" id="nav-threat">Clear corridor</span>
+        </div>
+        <div class="navmap__scanlines" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- IMU trace -->
+    <section class="card card--imu" style="--delay: 240ms">
+      <div class="card__head">
+        <h2 class="card__title">Inertial</h2>
+        <span class="card__meta" id="imu-meta">—</span>
+      </div>
+      <div class="imu">
+        <canvas id="imu-chart"></canvas>
+      </div>
+      <div class="imu__legend">
+        <span class="legend" style="--c: #7a9e7e">x</span>
+        <span class="legend" style="--c: #d4a574">y</span>
+        <span class="legend" style="--c: #c8847a">z</span>
+      </div>
+    </section>
+
+    <!-- Voice transcript -->
+    <section class="card card--voice" style="--delay: 320ms">
+      <div class="card__head">
+        <h2 class="card__title">Voice</h2>
+        <span class="card__meta" id="voice-status">Tap mic to talk</span>
+      </div>
+      <div class="transcript" id="transcript">
+        <p class="transcript__empty">No transcript yet.</p>
+      </div>
+      <button class="ptt-btn" id="ptt-btn" type="button" aria-label="Push to talk">
+        <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="currentColor"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </section>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
