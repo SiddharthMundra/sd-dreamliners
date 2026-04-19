@@ -24,6 +24,7 @@ from pi.models import (
 )
 from pi.services.camera import CameraService
 from pi.services.fusion import FusionEngine, FusionState
+from pi.services.narrator import NarratorService
 from pi.services.serial_bridge import SerialBridge
 from pi.services.voice import VoicePipeline, make_assistant_turn, make_user_turn
 from pi.services.webapp_server import WebappServer
@@ -46,6 +47,9 @@ class Belt:
         )
         self.fusion_state = FusionState()
         self.fusion = FusionEngine(self.fusion_state, self._on_haptic)
+        self.narrator = NarratorService(
+            self.yolo, self.voice, self._on_haptic, broadcast=self.webapp.broadcast,
+        )
         self.health = HealthState()
 
     async def run(self) -> None:
@@ -53,6 +57,7 @@ class Belt:
         await self.yolo.start()
         await self.serial.start()
         await self.fusion.start()
+        await self.narrator.start()
         asyncio.create_task(self._serial_event_loop())
         asyncio.create_task(self._fusion_input_loop())
         asyncio.create_task(self._health_loop())
