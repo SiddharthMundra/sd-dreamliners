@@ -4,20 +4,46 @@ import os
 
 PROTOCOL_VERSION = 1
 
-SERIAL_URL = os.environ.get("BELT_SERIAL_URL", "socket://localhost:5555")
-SERIAL_BAUD = 921600
+SERIAL_URL = os.environ.get("BELT_SERIAL_URL", "/dev/ttyUSB0")
+SERIAL_BAUD = int(os.environ.get("BELT_SERIAL_BAUD", "500000"))
 PING_INTERVAL_S = 1.0
 PONG_TIMEOUT_S = 3.0
-AUDIO_MODE_TIMEOUT_S = 2.0
+AUDIO_MODE_TIMEOUT_S = 5.0
 
 CAMERA_W = 640
 CAMERA_H = 360
-CAMERA_FPS = 15
+CAMERA_FPS = 30
 
+YOLO_BACKEND = os.environ.get("BELT_YOLO_BACKEND", "cpu")  # cpu | ei | qaihub
 YOLO_WEIGHTS = "yolov8n.pt"
-YOLO_IMGSZ = 320
-YOLO_CONF = 0.35
+YOLO_IMGSZ = int(os.environ.get("BELT_YOLO_IMGSZ", "256"))
+YOLO_CONF = float(os.environ.get("BELT_YOLO_CONF", "0.35"))
 YOLO_FRESH_MS = 500
+YOLO_CPU_THREADS = int(os.environ.get("BELT_YOLO_THREADS", "4"))
+
+# Edge Impulse QNN path. The .eim must be built in EI Studio with deployment
+# target "Linux (AARCH64 with Qualcomm QNN)" so it actually loads the
+# Hexagon NPU at runtime. See README.md > "Hardware acceleration".
+EI_MODEL_PATH = os.environ.get(
+    "BELT_EI_MODEL", os.path.expanduser("~/sd-dreamliners/models/yolo.eim")
+)
+
+# Qualcomm AI Hub path: TFLite traced from qai_hub_models.yolo26_det
+# (include_postprocessing=False, split_output=True). LiteRT runtime via
+# ai_edge_litert. Optionally load the QNN HTP delegate for NPU residency.
+# Defaults to fp32 because on QCS6490 it is the fastest (~44 fps end to end)
+# and skips int8 quantization noise on raw box coords.
+QAIHUB_MODEL_PATH = os.environ.get(
+    "BELT_QAIHUB_MODEL",
+    os.path.expanduser(
+        "~/sd-dreamliners/models/qaihub/yolo26n_qaihub_split/"
+        "yolo26n_qaihub_320_split_float32.tflite"
+    ),
+)
+QAIHUB_BACKEND = os.environ.get("BELT_QAIHUB_BACKEND", "cpu")  # cpu | htp
+QAIHUB_HTP_DELEGATE = os.environ.get(
+    "BELT_QAIHUB_HTP_DELEGATE", "/usr/lib/libQnnTFLiteDelegate.so"
+)
 
 DISTANCE_THRESHOLD_MM = 800
 DISTANCE_FRESH_MS = 200
@@ -49,3 +75,22 @@ WEBAPP_PORT = 8000
 
 LOG_DIR = os.environ.get("BELT_LOG_DIR", "/tmp/belt-logs")
 MEMORY_WATCH_INTERVAL_S = 10.0
+
+MOTOR_LEFT_IDX = int(os.environ.get("BELT_MOTOR_LEFT_IDX", "0"))
+MOTOR_FRONT_IDX = int(os.environ.get("BELT_MOTOR_FRONT_IDX", "1"))
+MOTOR_RIGHT_IDX = int(os.environ.get("BELT_MOTOR_RIGHT_IDX", "2"))
+MOTOR_BACK_IDX = int(os.environ.get("BELT_MOTOR_BACK_IDX", "3"))
+
+US_PAIR_A_ROLE = os.environ.get("BELT_US_PAIR_A_ROLE", "front")
+US_PAIR_A_ANGLE_DEG = float(os.environ.get("BELT_US_PAIR_A_ANGLE_DEG", "0"))
+US_PAIR_B_ROLE = os.environ.get("BELT_US_PAIR_B_ROLE", "back")
+US_PAIR_B_ANGLE_DEG = float(os.environ.get("BELT_US_PAIR_B_ANGLE_DEG", "180"))
+
+CAMERA_HFOV_DEG = float(os.environ.get("BELT_CAMERA_HFOV_DEG", "75"))
+
+NAV_POLL_INTERVAL_S = float(os.environ.get("BELT_NAV_POLL_INTERVAL_S", "0.4"))
+NAV_OBSTACLE_CM = float(os.environ.get("BELT_NAV_OBSTACLE_CM", "120"))
+NAV_LLM_TIMEOUT_S = float(os.environ.get("BELT_NAV_LLM_TIMEOUT_S", "2.0"))
+NAV_COOLDOWN_MS = int(os.environ.get("BELT_NAV_COOLDOWN_MS", "1500"))
+
+BELT_MIC_DEVICE = os.environ.get("BELT_MIC_DEVICE", "")

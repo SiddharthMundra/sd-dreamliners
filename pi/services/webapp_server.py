@@ -18,6 +18,7 @@ import asyncio
 import logging
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Callable
 
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
@@ -52,6 +53,8 @@ class WebappServer:
         self._health_supplier = health_supplier or (lambda: {})
         self._clients: set[WebSocket] = set()
         self._clients_lock = asyncio.Lock()
+        self._mjpeg_fps_raw = 0.0
+        self._mjpeg_fps_overlay = 0.0
         self._register_routes()
 
     def _register_routes(self) -> None:
@@ -92,6 +95,8 @@ class WebappServer:
                 "camera_fps": round(self._camera.fps, 2),
                 "camera_frame_age_ms": self._camera.frame_age_ms,
                 "camera_has_frame": frame is not None,
+                "mjpeg_fps": round(self._mjpeg_fps_raw, 2),
+                "mjpeg_overlay_fps": round(self._mjpeg_fps_overlay, 2),
                 **self._health_supplier(),
             }
 
@@ -138,10 +143,12 @@ class WebappServer:
         boundary = b"--frame\r\n"
         last_ts = 0
         loop = asyncio.get_running_loop()
+        frames = 0
+        window_start = monotonic()
         while True:
             frame, ts_ms = self._camera.get_latest_bgr()
             if frame is None or ts_ms == last_ts:
-                await asyncio.sleep(0.03)
+                await asyncio.sleep(0.01)
                 continue
             last_ts = ts_ms
             if overlay:
@@ -154,7 +161,16 @@ class WebappServer:
             yield boundary + b"Content-Type: image/jpeg\r\n"
             yield f"Content-Length: {len(jpeg)}\r\n\r\n".encode()
             yield jpeg + b"\r\n"
-            await asyncio.sleep(0.03)
+            frames += 1
+            elapsed = monotonic() - window_start
+            if elapsed >= 1.0:
+                fps = frames / elapsed
+                if overlay:
+                    self._mjpeg_fps_overlay = fps
+                else:
+                    self._mjpeg_fps_raw = fps
+                frames = 0
+                window_start = monotonic()
 
 
 def _to_dict(msg: dict | object) -> dict:

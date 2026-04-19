@@ -86,7 +86,7 @@ function dispatch(m) {
   switch (m.t) {
     case "detections": onDetections(m.boxes); break;
     case "imu":        onIMU(m);              break;
-    case "distance":   onDistance(m.mm);      break;
+    case "distance":   onDistance(m);         break;
     case "haptic":     onHaptic(m);           break;
     case "voice":      onVoice(m);            break;
     case "fall":       onFall(m);             break;
@@ -332,7 +332,11 @@ function onHealth(m) {
   setChip("yolo",    m.yolo_fps >= 3 ? "ok" : m.yolo_fps > 0 ? "warn" : "bad");
   setChip("warmup",  m.warmup_ok    ? "ok" : "warn");
   setChip("ollama",  m.ollama_alive ? "ok" : "bad");
-  if (els.feedFps) els.feedFps.textContent = `${m.yolo_fps.toFixed(1)} fps`;
+  if (els.feedFps) {
+    const streamFps = m.stream_fps ?? m.camera_fps ?? 0;
+    els.feedFps.textContent = `${streamFps.toFixed(1)} fps`;
+    els.feedFps.title = `video ${streamFps.toFixed(1)} · yolo ${m.yolo_fps.toFixed(1)} · cam ${(m.camera_fps ?? 0).toFixed(1)}`;
+  }
 }
 
 function setChip(key, state) {

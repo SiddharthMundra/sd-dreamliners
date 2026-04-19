@@ -11,7 +11,7 @@ import logging
 import threading
 from time import monotonic, time
 
-from pi.config import YOLO_CONF, YOLO_IMGSZ, YOLO_WEIGHTS
+from pi.config import YOLO_CONF, YOLO_CPU_THREADS, YOLO_IMGSZ, YOLO_WEIGHTS
 from pi.models import Detection, DetectionFrame
 from pi.services.camera import CameraService
 
@@ -43,13 +43,19 @@ class YoloService:
     def warmup(self) -> None:
         """Run one inference on a black image to load weights into memory."""
         import numpy as np
+        import torch
         from ultralytics import YOLO  # type: ignore[import-not-found]
+
+        # Cap CPU thread pool so YOLO bursts don't starve the MJPEG encoder
+        # and other asyncio work. Pi has 8 cores; leave 4 for everything else.
+        torch.set_num_threads(YOLO_CPU_THREADS)
+        torch.set_num_interop_threads(1)
 
         model = YOLO(YOLO_WEIGHTS)
         dummy = np.zeros((YOLO_IMGSZ, YOLO_IMGSZ, 3), dtype=np.uint8)
         model(dummy, imgsz=YOLO_IMGSZ, verbose=False)
         self._model = model
-        log.info("yolo warm")
+        log.info("yolo warm (imgsz=%d threads=%d)", YOLO_IMGSZ, YOLO_CPU_THREADS)
 
     def _infer_loop(self) -> None:
         try:
