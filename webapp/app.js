@@ -58,7 +58,14 @@ const proxDisplay   = { F: null, B: null, L: null, R: null };
 let proxAnimRaf     = null;
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
-const ws = new WebSocket(`ws://${location.host}/ws`);
+// Always pull live data from the Pi, even when the HTML is served from a
+// different machine (e.g. a teammate running their own local web server).
+// Falls back to same-origin when the page is already served by the Pi.
+const BELT_PI_HOST = "10.10.9.207:8000";
+const wsHost = (location.host === BELT_PI_HOST || location.hostname === "10.10.9.207")
+  ? location.host
+  : BELT_PI_HOST;
+const ws = new WebSocket(`ws://${wsHost}/ws`);
 
 ws.onopen  = () => setConn(true);
 ws.onclose = () => setConn(false);
